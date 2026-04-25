@@ -12,31 +12,41 @@ import (
 
 // Config maps the on-disk TOML structure of ~/.config/ja2en/config.toml.
 type Config struct {
-	DefaultProfile string             `toml:"default_profile"`
-	Model          string             `toml:"model"`
-	APIBase        string             `toml:"api_base"`
-	APIKeyEnv      string             `toml:"api_key_env"`
-	TimeoutSeconds int                `toml:"timeout_seconds"`
-	Profiles       map[string]Profile `toml:"profiles"`
+	DefaultProfile  string             `toml:"default_profile"`
+	Provider        string             `toml:"provider"`
+	Model           string             `toml:"model"`
+	APIBase         string             `toml:"api_base"`
+	APIKeyEnv       string             `toml:"api_key_env"`
+	ReasoningEffort string             `toml:"reasoning_effort"`
+	TimeoutSeconds  int                `toml:"timeout_seconds"`
+	Profiles        map[string]Profile `toml:"profiles"`
 }
 
 // Profile holds per-profile overrides. Each field falls back to the
 // top-level Config value when empty.
+//
+// Provider selects the translation backend: "openai" (OpenAI-compatible
+// chat/completions, used for OpenRouter, Google AI Studio, Cerebras, Groq,
+// etc.) or "deepl" (DeepL REST API). Default is "openai".
 type Profile struct {
-	Prompt     string `toml:"prompt"`
-	PromptFile string `toml:"prompt_file"`
-	Model      string `toml:"model"`
-	APIBase    string `toml:"api_base"`
-	APIKeyEnv  string `toml:"api_key_env"`
+	Prompt          string `toml:"prompt"`
+	PromptFile      string `toml:"prompt_file"`
+	Provider        string `toml:"provider"`
+	Model           string `toml:"model"`
+	APIBase         string `toml:"api_base"`
+	APIKeyEnv       string `toml:"api_key_env"`
+	ReasoningEffort string `toml:"reasoning_effort"`
 }
 
 // Resolved is the runtime-ready config after merging CLI flags and env vars.
 type Resolved struct {
-	Prompt         string
-	Model          string
-	APIBase        string
-	APIKey         string
-	TimeoutSeconds int
+	Prompt          string
+	Provider        string
+	Model           string
+	APIBase         string
+	APIKey          string
+	ReasoningEffort string
+	TimeoutSeconds  int
 }
 
 // Path returns the absolute path to config.toml, honoring XDG_CONFIG_HOME.
@@ -83,19 +93,37 @@ func (c *Config) Resolve(profileName, modelOverride, promptFileOverride string) 
 		return nil, fmt.Errorf("profile %q not found. available: %v", profileName, names)
 	}
 
-	prompt, err := resolvePrompt(profile, promptFileOverride)
+	provider := pickFirst(profile.Provider, c.Provider, "openai")
+	if provider != "openai" && provider != "deepl" {
+		return nil, fmt.Errorf("profile %q: unknown provider %q (must be \"openai\" or \"deepl\")", profileName, provider)
+	}
+
+	prompt, err := resolvePrompt(profile, promptFileOverride, provider)
 	if err != nil {
 		return nil, fmt.Errorf("profile %q: %w", profileName, err)
 	}
 
+	// DeepL is a translation-only API; it has no concept of "model".
 	model := pickFirst(modelOverride, profile.Model, c.Model)
-	if model == "" {
+	if model == "" && provider != "deepl" {
 		return nil, fmt.Errorf("no model specified at any level (cli/profile/top)")
 	}
 
-	apiBase := pickFirst(profile.APIBase, c.APIBase, "https://openrouter.ai/api/v1")
+	apiBase := pickFirst(profile.APIBase, c.APIBase)
+	if apiBase == "" && provider == "openai" {
+		apiBase = "https://openrouter.ai/api/v1"
+	}
+	// For DeepL, an empty apiBase signals "auto-detect from key suffix" — the
+	// translator package picks api-free.deepl.com (`:fx` suffix) or api.deepl.com.
 
-	keyEnv := pickFirst(profile.APIKeyEnv, c.APIKeyEnv, "OPENROUTER_API_KEY")
+	keyEnv := pickFirst(profile.APIKeyEnv, c.APIKeyEnv)
+	if keyEnv == "" {
+		if provider == "deepl" {
+			keyEnv = "DEEPL_API_KEY"
+		} else {
+			keyEnv = "OPENROUTER_API_KEY"
+		}
+	}
 	apiKey := strings.TrimSpace(os.Getenv(keyEnv))
 	if apiKey == "" {
 		return nil, fmt.Errorf("environment variable %s is required (referenced by api_key_env)", keyEnv)
@@ -106,12 +134,16 @@ func (c *Config) Resolve(profileName, modelOverride, promptFileOverride string) 
 		timeout = 30
 	}
 
+	reasoningEffort := pickFirst(profile.ReasoningEffort, c.ReasoningEffort)
+
 	return &Resolved{
-		Prompt:         prompt,
-		Model:          model,
-		APIBase:        apiBase,
-		APIKey:         apiKey,
-		TimeoutSeconds: timeout,
+		Prompt:          prompt,
+		Provider:        provider,
+		Model:           model,
+		APIBase:         apiBase,
+		APIKey:          apiKey,
+		ReasoningEffort: reasoningEffort,
+		TimeoutSeconds:  timeout,
 	}, nil
 }
 
@@ -125,7 +157,7 @@ func pickFirst(candidates ...string) string {
 	return ""
 }
 
-func resolvePrompt(p Profile, override string) (string, error) {
+func resolvePrompt(p Profile, override, provider string) (string, error) {
 	if override != "" {
 		return readPromptFile(override)
 	}
@@ -137,6 +169,11 @@ func resolvePrompt(p Profile, override string) (string, error) {
 	}
 	if p.Prompt != "" {
 		return strings.TrimSpace(p.Prompt), nil
+	}
+	// DeepL is a translation-only API and has no system prompt concept;
+	// running without a prompt is normal for the deepl provider.
+	if provider == "deepl" {
+		return "", nil
 	}
 	return "", fmt.Errorf("neither 'prompt' nor 'prompt_file' is set")
 }

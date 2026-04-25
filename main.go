@@ -16,6 +16,16 @@ import (
 	"github.com/GigiTiti-Kai/ja2en/internal/translator"
 )
 
+// translatorClient is the minimal contract main.go needs. Both
+// translator.Client (OpenAI-compatible) and translator.DeepLClient satisfy it.
+//
+// reasoningEffort is consumed by OpenAI-compatible providers (GPT-5.x:
+// none/low/medium/high/xhigh; Gemini 2.5: none disables thinking). DeepL
+// ignores it.
+type translatorClient interface {
+	Translate(ctx context.Context, model, systemPrompt, userText, reasoningEffort string) (string, error)
+}
+
 // version is overridden at build time via -ldflags "-X main.version=..."
 var version = "dev"
 
@@ -114,7 +124,13 @@ func runTranslate(ctx context.Context, args []string, opts runOpts) error {
 	}
 
 	timeout := time.Duration(resolved.TimeoutSeconds) * time.Second
-	client := translator.NewClient(resolved.APIBase, resolved.APIKey, timeout)
+	var client translatorClient
+	switch resolved.Provider {
+	case "deepl":
+		client = translator.NewDeepLClient(resolved.APIBase, resolved.APIKey, timeout)
+	default:
+		client = translator.NewClient(resolved.APIBase, resolved.APIKey, timeout)
+	}
 
 	if ctx == nil {
 		ctx = context.Background()
@@ -122,7 +138,7 @@ func runTranslate(ctx context.Context, args []string, opts runOpts) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	out, err := client.Translate(ctx, resolved.Model, resolved.Prompt, text)
+	out, err := client.Translate(ctx, resolved.Model, resolved.Prompt, text, resolved.ReasoningEffort)
 	if err != nil {
 		return err
 	}

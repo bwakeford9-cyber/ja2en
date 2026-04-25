@@ -134,6 +134,176 @@ func TestResolve_PromptFileOverride(t *testing.T) {
 	}
 }
 
+func TestResolve_ProviderDefaultsToOpenAI(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "k")
+
+	cfg := &Config{
+		DefaultProfile: "x",
+		Model:          "m",
+		Profiles:       map[string]Profile{"x": {Prompt: "p"}},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.Provider != "openai" {
+		t.Errorf("provider = %q, want openai (default)", r.Provider)
+	}
+}
+
+func TestResolve_ProviderProfileOverridesTop(t *testing.T) {
+	t.Setenv("DEEPL_API_KEY", "deepl-key")
+
+	cfg := &Config{
+		DefaultProfile: "deepl",
+		Provider:       "openai",
+		Model:          "m",
+		Profiles: map[string]Profile{
+			"deepl": {Provider: "deepl"},
+		},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.Provider != "deepl" {
+		t.Errorf("provider = %q, want deepl (profile override)", r.Provider)
+	}
+}
+
+func TestResolve_DeepLAllowsNoModel(t *testing.T) {
+	t.Setenv("DEEPL_API_KEY", "k:fx")
+
+	cfg := &Config{
+		DefaultProfile: "deepl",
+		Profiles: map[string]Profile{
+			"deepl": {Provider: "deepl"},
+		},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.Model != "" {
+		t.Errorf("model = %q, want empty for deepl", r.Model)
+	}
+	if r.APIKey != "k:fx" {
+		t.Errorf("api_key = %q", r.APIKey)
+	}
+}
+
+func TestResolve_DeepLAllowsNoPrompt(t *testing.T) {
+	t.Setenv("DEEPL_API_KEY", "k")
+
+	cfg := &Config{
+		DefaultProfile: "deepl",
+		Profiles: map[string]Profile{
+			"deepl": {Provider: "deepl"}, // no Prompt or PromptFile
+		},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.Prompt != "" {
+		t.Errorf("prompt = %q, want empty for deepl", r.Prompt)
+	}
+}
+
+func TestResolve_OpenAIRequiresPrompt(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "k")
+
+	cfg := &Config{
+		DefaultProfile: "x",
+		Model:          "m",
+		Profiles: map[string]Profile{
+			"x": {}, // no Prompt
+		},
+	}
+	_, err := cfg.Resolve("", "", "")
+	if err == nil || !strings.Contains(err.Error(), "neither 'prompt'") {
+		t.Errorf("expected missing-prompt error, got %v", err)
+	}
+}
+
+func TestResolve_UnknownProviderRejected(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "k")
+
+	cfg := &Config{
+		DefaultProfile: "x",
+		Profiles: map[string]Profile{
+			"x": {Provider: "anthropic-native", Prompt: "p"},
+		},
+	}
+	_, err := cfg.Resolve("", "", "")
+	if err == nil || !strings.Contains(err.Error(), "unknown provider") {
+		t.Errorf("expected unknown-provider error, got %v", err)
+	}
+}
+
+func TestResolve_ReasoningEffortPrecedence(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "k")
+
+	cfg := &Config{
+		DefaultProfile:  "x",
+		Model:           "m",
+		ReasoningEffort: "high",
+		APIKeyEnv:       "GEMINI_API_KEY",
+		Profiles: map[string]Profile{
+			"x": {Prompt: "p", ReasoningEffort: "minimal"},
+		},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.ReasoningEffort != "minimal" {
+		t.Errorf("reasoning_effort = %q, want minimal (profile wins)", r.ReasoningEffort)
+	}
+}
+
+func TestResolve_ReasoningEffortFallsBackToTop(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "k")
+
+	cfg := &Config{
+		DefaultProfile:  "x",
+		Model:           "m",
+		ReasoningEffort: "none",
+		APIKeyEnv:       "GEMINI_API_KEY",
+		Profiles: map[string]Profile{
+			"x": {Prompt: "p"}, // no ReasoningEffort
+		},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.ReasoningEffort != "none" {
+		t.Errorf("reasoning_effort = %q, want none (top-level fallback)", r.ReasoningEffort)
+	}
+}
+
+func TestResolve_DeepLAPIKeyEnvDefault(t *testing.T) {
+	// When provider=deepl and no api_key_env is set anywhere, it should
+	// default to DEEPL_API_KEY rather than OPENROUTER_API_KEY.
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("DEEPL_API_KEY", "deepl-key:fx")
+
+	cfg := &Config{
+		DefaultProfile: "deepl",
+		Profiles: map[string]Profile{
+			"deepl": {Provider: "deepl"},
+		},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.APIKey != "deepl-key:fx" {
+		t.Errorf("api_key = %q, want deepl-key:fx", r.APIKey)
+	}
+}
+
 func TestExpandTilde(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	tests := []struct {

@@ -29,9 +29,10 @@ func NewClient(apiBase, apiKey string, timeout time.Duration) *Client {
 }
 
 type chatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []message `json:"messages"`
-	Temperature *float64  `json:"temperature,omitempty"`
+	Model           string    `json:"model"`
+	Messages        []message `json:"messages"`
+	Temperature     *float64  `json:"temperature,omitempty"`
+	ReasoningEffort *string   `json:"reasoning_effort,omitempty"`
 }
 
 type message struct {
@@ -53,16 +54,28 @@ type apiError struct {
 
 // Translate sends a chat completion request and returns the assistant's text.
 // Temperature is fixed at 0 for deterministic translation output.
-func (c *Client) Translate(ctx context.Context, model, systemPrompt, userText string) (string, error) {
+//
+// reasoningEffort maps to the OpenAI-compatible `reasoning_effort` field,
+// supported by GPT-5.x ("none" / "low" / "medium" / "high" / "xhigh"; some
+// older 5.x routes also accept "minimal", but 5.4-nano does not) and Gemini
+// 2.5 ("none" disables thinking). Pass an empty string to omit the field
+// (provider defaults apply). Critical for Gemini 2.5 — without it, the
+// model runs in thinking mode and consumes the project's 250K shared TPM
+// per request, throttling RPD to ~20.
+func (c *Client) Translate(ctx context.Context, model, systemPrompt, userText, reasoningEffort string) (string, error) {
 	temp := 0.0
-	body, err := json.Marshal(chatRequest{
+	payload := chatRequest{
 		Model: model,
 		Messages: []message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userText},
 		},
 		Temperature: &temp,
-	})
+	}
+	if reasoningEffort != "" {
+		payload.ReasoningEffort = &reasoningEffort
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("marshal: %w", err)
 	}

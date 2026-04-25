@@ -36,7 +36,7 @@ func TestTranslate_Success(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "test-key", 5*time.Second)
-	out, err := c.Translate(context.Background(), "test/model", "translate", "こんにちは世界")
+	out, err := c.Translate(context.Background(), "test/model", "translate", "こんにちは世界", "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestTranslate_401(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "bad", time.Second)
-	_, err := c.Translate(context.Background(), "m", "p", "u")
+	_, err := c.Translate(context.Background(), "m", "p", "u", "")
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("expected 401 error, got %v", err)
 	}
@@ -66,7 +66,7 @@ func TestTranslate_429(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "k", time.Second)
-	_, err := c.Translate(context.Background(), "m", "p", "u")
+	_, err := c.Translate(context.Background(), "m", "p", "u", "")
 	if err == nil || !strings.Contains(err.Error(), "rate limit") {
 		t.Errorf("expected rate-limit error, got %v", err)
 	}
@@ -80,9 +80,43 @@ func TestTranslate_500WithErrorBody(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "k", time.Second)
-	_, err := c.Translate(context.Background(), "m", "p", "u")
+	_, err := c.Translate(context.Background(), "m", "p", "u", "")
 	if err == nil || !strings.Contains(err.Error(), "upstream provider down") {
 		t.Errorf("expected upstream error message, got %v", err)
+	}
+}
+
+func TestTranslate_ReasoningEffortOmittedWhenEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "reasoning_effort") {
+			t.Errorf("reasoning_effort should be omitted when empty, got body: %s", string(body))
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"x"}}]}`))
+	}))
+	defer server.Close()
+	c := NewClient(server.URL, "k", time.Second)
+	if _, err := c.Translate(context.Background(), "m", "p", "u", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTranslate_ReasoningEffortIncludedWhenSet(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatal(err)
+		}
+		if req.ReasoningEffort == nil || *req.ReasoningEffort != "minimal" {
+			t.Errorf("reasoning_effort = %v, want \"minimal\"", req.ReasoningEffort)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"x"}}]}`))
+	}))
+	defer server.Close()
+	c := NewClient(server.URL, "k", time.Second)
+	if _, err := c.Translate(context.Background(), "m", "p", "u", "minimal"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -93,7 +127,7 @@ func TestTranslate_NoChoices(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "k", time.Second)
-	_, err := c.Translate(context.Background(), "m", "p", "u")
+	_, err := c.Translate(context.Background(), "m", "p", "u", "")
 	if err == nil || !strings.Contains(err.Error(), "no choices") {
 		t.Errorf("expected no-choices error, got %v", err)
 	}
