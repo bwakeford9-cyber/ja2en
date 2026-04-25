@@ -39,28 +39,32 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	var (
-		profileFlag    string
-		modelFlag      string
-		promptFileFlag string
-		clipFlag       bool
-		pasteFlag      bool
+		profileFlag     string
+		modelFlag       string
+		promptFileFlag  string
+		clipFlag        bool
+		pasteFlag       bool
+		editorFlag      bool
+		interactiveFlag bool
 	)
 
 	root := &cobra.Command{
 		Use:           "ja2en [text]",
-		Short:         "Translate Japanese to English via OpenRouter",
-		Long:          "ja2en is a tiny CLI that translates Japanese to English using OpenRouter.\nFirst run: ja2en init",
+		Short:         "Translate Japanese to English via OpenAI / Gemini / DeepL",
+		Long:          "ja2en is a tiny CLI that translates Japanese to English.\nFirst run: ja2en init",
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTranslate(cmd.Context(), args, runOpts{
-				Profile:    profileFlag,
-				Model:      modelFlag,
-				PromptFile: promptFileFlag,
-				Clip:       clipFlag,
-				Paste:      pasteFlag,
+				Profile:     profileFlag,
+				Model:       modelFlag,
+				PromptFile:  promptFileFlag,
+				Clip:        clipFlag,
+				Paste:       pasteFlag,
+				Editor:      editorFlag,
+				Interactive: interactiveFlag,
 			})
 		},
 	}
@@ -70,6 +74,8 @@ func newRootCmd() *cobra.Command {
 	root.Flags().StringVar(&promptFileFlag, "prompt-file", "", "ad-hoc prompt file path")
 	root.Flags().BoolVar(&clipFlag, "clip", false, "read input from clipboard")
 	root.Flags().BoolVar(&pasteFlag, "paste", false, "write translation to clipboard")
+	root.Flags().BoolVarP(&editorFlag, "editor", "e", false, "compose input in $EDITOR (vim/nano)")
+	root.Flags().BoolVarP(&interactiveFlag, "interactive", "i", false, "read multi-line stdin until Ctrl-D")
 
 	root.AddCommand(newInitCmd())
 	return root
@@ -89,11 +95,13 @@ func newInitCmd() *cobra.Command {
 }
 
 type runOpts struct {
-	Profile    string
-	Model      string
-	PromptFile string
-	Clip       bool
-	Paste      bool
+	Profile     string
+	Model       string
+	PromptFile  string
+	Clip        bool
+	Paste       bool
+	Editor      bool
+	Interactive bool
 }
 
 func runTranslate(ctx context.Context, args []string, opts runOpts) error {
@@ -116,8 +124,10 @@ func runTranslate(ctx context.Context, args []string, opts runOpts) error {
 	}
 
 	text, err := input.Resolve(input.Source{
-		Args:    args,
-		UseClip: opts.Clip,
+		Args:           args,
+		UseClip:        opts.Clip,
+		UseEditor:      opts.Editor,
+		UseInteractive: opts.Interactive,
 	})
 	if err != nil {
 		return err
