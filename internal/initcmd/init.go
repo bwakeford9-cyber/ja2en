@@ -35,9 +35,10 @@ func Run(force bool) error {
 	fmt.Printf("Created %s\n", cfgPath)
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Println("  1. Make sure OPENROUTER_API_KEY is set in your shell:")
-	fmt.Println("       echo $OPENROUTER_API_KEY")
-	fmt.Println("     (get a key at https://openrouter.ai/keys)")
+	fmt.Println("  1. Make sure the API key referenced by api_key_env in the")
+	fmt.Println("     config (default: GEMINI_API_KEY) is set in your shell:")
+	fmt.Println("       echo $GEMINI_API_KEY")
+	fmt.Println("     (get a Google AI Studio key: https://aistudio.google.com/apikey)")
 	fmt.Println("  2. Try it:")
 	fmt.Println("       ja2en \"明日出社する\"")
 	return nil

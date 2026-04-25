@@ -156,6 +156,78 @@ func TestExpandTilde(t *testing.T) {
 	}
 }
 
+func TestResolve_CustomAPIKeyEnv(t *testing.T) {
+	// Make sure the default env var is empty so we can prove the custom one is used.
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "gemini-test-key")
+
+	cfg := &Config{
+		DefaultProfile: "simple",
+		Model:          "gemini-3.1-flash-lite-preview",
+		APIBase:        "https://generativelanguage.googleapis.com/v1beta/openai",
+		APIKeyEnv:      "GEMINI_API_KEY",
+		Profiles:       map[string]Profile{"simple": {Prompt: "translate"}},
+	}
+	r, err := cfg.Resolve("", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.APIKey != "gemini-test-key" {
+		t.Errorf("api_key = %q, want gemini-test-key", r.APIKey)
+	}
+	if r.APIBase != "https://generativelanguage.googleapis.com/v1beta/openai" {
+		t.Errorf("api_base = %q", r.APIBase)
+	}
+}
+
+func TestResolve_ProfileLevelAPIKeyEnv(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "or-key")
+	t.Setenv("GEMINI_API_KEY", "gem-key")
+
+	cfg := &Config{
+		DefaultProfile: "openrouter",
+		Model:          "fallback",
+		APIKeyEnv:      "GEMINI_API_KEY", // top-level says Gemini
+		Profiles: map[string]Profile{
+			"openrouter": {
+				Prompt:    "translate",
+				APIKeyEnv: "OPENROUTER_API_KEY", // profile overrides to OpenRouter
+				APIBase:   "https://openrouter.ai/api/v1",
+				Model:     "anthropic/claude-haiku-4.5",
+			},
+		},
+	}
+	r, err := cfg.Resolve("openrouter", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.APIKey != "or-key" {
+		t.Errorf("api_key = %q, want or-key (profile-level override)", r.APIKey)
+	}
+	if r.APIBase != "https://openrouter.ai/api/v1" {
+		t.Errorf("api_base = %q", r.APIBase)
+	}
+	if r.Model != "anthropic/claude-haiku-4.5" {
+		t.Errorf("model = %q", r.Model)
+	}
+}
+
+func TestResolve_MissingCustomAPIKey_MentionsActualVar(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
+
+	cfg := &Config{
+		DefaultProfile: "simple",
+		Model:          "x",
+		APIKeyEnv:      "GEMINI_API_KEY",
+		Profiles:       map[string]Profile{"simple": {Prompt: "p"}},
+	}
+	_, err := cfg.Resolve("", "", "")
+	if err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
+		t.Fatalf("expected error mentioning GEMINI_API_KEY, got %v", err)
+	}
+}
+
 func TestLoad_Roundtrip(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.toml")

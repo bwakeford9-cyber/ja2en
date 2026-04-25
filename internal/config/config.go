@@ -15,15 +15,19 @@ type Config struct {
 	DefaultProfile string             `toml:"default_profile"`
 	Model          string             `toml:"model"`
 	APIBase        string             `toml:"api_base"`
+	APIKeyEnv      string             `toml:"api_key_env"`
 	TimeoutSeconds int                `toml:"timeout_seconds"`
 	Profiles       map[string]Profile `toml:"profiles"`
 }
 
-// Profile holds per-profile prompt and optional model override.
+// Profile holds per-profile overrides. Each field falls back to the
+// top-level Config value when empty.
 type Profile struct {
 	Prompt     string `toml:"prompt"`
 	PromptFile string `toml:"prompt_file"`
 	Model      string `toml:"model"`
+	APIBase    string `toml:"api_base"`
+	APIKeyEnv  string `toml:"api_key_env"`
 }
 
 // Resolved is the runtime-ready config after merging CLI flags and env vars.
@@ -56,16 +60,13 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Resolve merges Config with CLI overrides and environment variables, returning
-// a runtime-ready Resolved value. Prompt precedence: promptFileOverride >
-// profile.PromptFile > profile.Prompt. Model precedence: modelOverride >
-// profile.Model > Config.Model.
+// Resolve merges Config with CLI overrides and environment variables,
+// returning a runtime-ready Resolved value. Precedence for each field
+// (highest to lowest): CLI override, profile-level value, top-level
+// Config value, hard-coded default. The api_key_env field names which
+// environment variable holds the API key; it defaults to
+// OPENROUTER_API_KEY for backward compatibility.
 func (c *Config) Resolve(profileName, modelOverride, promptFileOverride string) (*Resolved, error) {
-	apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	if apiKey == "" {
-		return nil, fmt.Errorf("environment variable OPENROUTER_API_KEY is required (get one at https://openrouter.ai/keys)")
-	}
-
 	if profileName == "" {
 		profileName = c.DefaultProfile
 	}
@@ -87,20 +88,17 @@ func (c *Config) Resolve(profileName, modelOverride, promptFileOverride string) 
 		return nil, fmt.Errorf("profile %q: %w", profileName, err)
 	}
 
-	model := modelOverride
-	if model == "" {
-		model = profile.Model
-	}
-	if model == "" {
-		model = c.Model
-	}
+	model := pickFirst(modelOverride, profile.Model, c.Model)
 	if model == "" {
 		return nil, fmt.Errorf("no model specified at any level (cli/profile/top)")
 	}
 
-	apiBase := c.APIBase
-	if apiBase == "" {
-		apiBase = "https://openrouter.ai/api/v1"
+	apiBase := pickFirst(profile.APIBase, c.APIBase, "https://openrouter.ai/api/v1")
+
+	keyEnv := pickFirst(profile.APIKeyEnv, c.APIKeyEnv, "OPENROUTER_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv(keyEnv))
+	if apiKey == "" {
+		return nil, fmt.Errorf("environment variable %s is required (referenced by api_key_env)", keyEnv)
 	}
 
 	timeout := c.TimeoutSeconds
@@ -115,6 +113,16 @@ func (c *Config) Resolve(profileName, modelOverride, promptFileOverride string) 
 		APIKey:         apiKey,
 		TimeoutSeconds: timeout,
 	}, nil
+}
+
+// pickFirst returns the first non-empty string from the candidates.
+func pickFirst(candidates ...string) string {
+	for _, s := range candidates {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func resolvePrompt(p Profile, override string) (string, error) {
