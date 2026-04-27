@@ -68,6 +68,13 @@ Style rules:
 - Drop hedge words and fillers entirely. They become NOTHING in English:
   ってか / なんですけど / 〜だけど / 〜のかな / 〜って感じ / まあ / なんか.
   NEVER translate them as "well", "also", "by the way", "I wonder if".
+- Translate sequencing/tentative adverbs by their TEMPORAL meaning, NOT as
+  uncertainty hedges:
+  とりあえず -> "for now" / "for the time being" / "as a first step".
+  ひとまず -> "for now" / "for the moment".
+  一旦 -> "for now" (when it means "tentatively, before doing more later").
+  NEVER translate these as "probably" / "maybe" / "perhaps" — they describe
+  *time/order*, not *certainty*.
 - Drop polite request markers from casual contexts:
   〜してください / 〜してくださいね / 教えてください / 教えて.
   These become a plain question or imperative in English, NOT "Please ___."
@@ -97,6 +104,9 @@ Output: How do I change the background color in WezTerm?
 
 Input: 効いてないのかな？
 Output: Is this not working?
+
+Input: とりあえず修正したいのはこれだけかな
+Output: For now, this is the only thing I want to fix.
 
 Input: 明日出社する
 Output: I'll come to the office tomorrow.
@@ -148,6 +158,13 @@ Style rules:
 - Drop hedge words and fillers entirely. They become NOTHING in English:
   ってか / なんですけど / 〜だけど / 〜のかな / 〜って感じ / まあ / なんか.
   NEVER translate them as "well", "also", "by the way", "I wonder if".
+- Translate sequencing/tentative adverbs by their TEMPORAL meaning, NOT as
+  uncertainty hedges:
+  とりあえず -> "for now" / "for the time being" / "as a first step".
+  ひとまず -> "for now" / "for the moment".
+  一旦 -> "for now" (when it means "tentatively, before doing more later").
+  NEVER translate these as "probably" / "maybe" / "perhaps" — they describe
+  *time/order*, not *certainty*.
 - Drop polite request markers from casual contexts:
   〜してください / 〜してくださいね / 教えてください / 教えて.
   These become a plain question or imperative in English, NOT "Please ___."
@@ -177,6 +194,9 @@ Output: How do I change the background color in WezTerm?
 
 Input: 効いてないのかな？
 Output: Is this not working?
+
+Input: とりあえず修正したいのはこれだけかな
+Output: For now, this is the only thing I want to fix.
 
 Input: 明日出社する
 Output: I'll come to the office tomorrow.
@@ -229,6 +249,13 @@ Style rules:
 - Drop hedge words and fillers entirely. They become NOTHING in English:
   ってか / なんですけど / 〜だけど / 〜のかな / 〜って感じ / まあ / なんか.
   NEVER translate them as "well", "also", "by the way", "I wonder if".
+- Translate sequencing/tentative adverbs by their TEMPORAL meaning, NOT as
+  uncertainty hedges:
+  とりあえず -> "for now" / "for the time being" / "as a first step".
+  ひとまず -> "for now" / "for the moment".
+  一旦 -> "for now" (when it means "tentatively, before doing more later").
+  NEVER translate these as "probably" / "maybe" / "perhaps" — they describe
+  *time/order*, not *certainty*.
 - Drop polite request markers from casual contexts:
   〜してください / 〜してくださいね / 教えてください / 教えて.
   These become a plain question or imperative in English, NOT "Please ___."
@@ -258,6 +285,9 @@ Output: How do I change the background color in WezTerm?
 
 Input: 効いてないのかな？
 Output: Is this not working?
+
+Input: とりあえず修正したいのはこれだけかな
+Output: For now, this is the only thing I want to fix.
 
 Input: 明日出社する
 Output: I'll come to the office tomorrow.
